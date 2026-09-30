@@ -1,0 +1,8 @@
+{
+  "name": "Study Buddy",
+  "description": "AI-powered personal study tool featuring interactive topic explanations, 3D flashcards, auto-graded quizzes, an AI tutor chat, and Pomodoro focus timer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
