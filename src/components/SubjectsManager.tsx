@@ -50,6 +50,13 @@ export const SubjectsManager: React.FC<SubjectsManagerProps> = ({
   const [newTopicDesc, setNewTopicDesc] = useState('');
   const [newTopicSubjectId, setNewTopicSubjectId] = useState(subjects[0]?.id || '');
 
+  // Keep newTopicSubjectId in sync with available subjects
+  React.useEffect(() => {
+    if ((!newTopicSubjectId || !subjects.some((s) => s.id === newTopicSubjectId)) && subjects.length > 0) {
+      setNewTopicSubjectId(subjects[0].id);
+    }
+  }, [subjects, newTopicSubjectId]);
+
   // Filtered topics
   const filteredTopics = topics.filter((t) => {
     const matchesSubject = selectedSubjectId === 'all' || t.subjectId === selectedSubjectId;
@@ -77,12 +84,16 @@ export const SubjectsManager: React.FC<SubjectsManagerProps> = ({
 
   const handleAddTopicSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTopicTitle.trim() || !newTopicSubjectId) return;
+    const effectiveSubjectId =
+      newTopicSubjectId ||
+      (selectedSubjectId !== 'all' ? selectedSubjectId : subjects[0]?.id);
+
+    if (!newTopicTitle.trim() || !effectiveSubjectId) return;
 
     onCreateTopic({
       title: newTopicTitle.trim(),
       description: newTopicDesc.trim() || 'Active study topic',
-      subjectId: newTopicSubjectId,
+      subjectId: effectiveSubjectId,
     });
 
     setNewTopicTitle('');
@@ -155,6 +166,8 @@ export const SubjectsManager: React.FC<SubjectsManagerProps> = ({
               if (subjects.length > 0) {
                 setNewTopicSubjectId(selectedSubjectId !== 'all' ? selectedSubjectId : subjects[0].id);
                 setIsAddTopicOpen(true);
+              } else {
+                setIsAddSubjectOpen(true);
               }
             }}
             className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
@@ -237,12 +250,14 @@ export const SubjectsManager: React.FC<SubjectsManagerProps> = ({
               if (subjects.length > 0) {
                 setNewTopicSubjectId(selectedSubjectId !== 'all' ? selectedSubjectId : subjects[0].id);
                 setIsAddTopicOpen(true);
+              } else {
+                setIsAddSubjectOpen(true);
               }
             }}
             className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
-            <span>Create Topic</span>
+            <span>{subjects.length > 0 ? 'Create Topic' : 'Create First Subject'}</span>
           </button>
         </div>
       ) : (
@@ -427,7 +442,7 @@ export const SubjectsManager: React.FC<SubjectsManagerProps> = ({
                   Subject
                 </label>
                 <select
-                  value={newTopicSubjectId}
+                  value={newTopicSubjectId || subjects[0]?.id || ''}
                   onChange={(e) => setNewTopicSubjectId(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >

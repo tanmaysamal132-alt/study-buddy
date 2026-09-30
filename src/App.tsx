@@ -148,11 +148,13 @@ export default function App() {
     setActiveTab('studio');
 
     // Update lastStudiedAt
-    const updatedTopics = topics.map((t) =>
-      t.id === topicId ? { ...t, lastStudiedAt: Date.now() } : t
-    );
-    setTopics(updatedTopics);
-    saveTopics(updatedTopics);
+    setTopics((prev) => {
+      const updatedTopics = prev.map((t) =>
+        t.id === topicId ? { ...t, lastStudiedAt: Date.now() } : t
+      );
+      saveTopics(updatedTopics);
+      return updatedTopics;
+    });
   };
 
   const handleQuickExplain = (topicTitle: string) => {
@@ -182,9 +184,11 @@ export default function App() {
       lastStudiedAt: Date.now(),
     };
 
-    const updated = [newTopic, ...topics];
-    setTopics(updated);
-    saveTopics(updated);
+    setTopics((prev) => {
+      const updated = [newTopic, ...prev.filter((t) => t.id !== newTopic.id)];
+      saveTopics(updated);
+      return updated;
+    });
 
     setSelectedTopicId(newTopic.id);
     setStudioInitialTab('explain');
@@ -193,33 +197,37 @@ export default function App() {
 
   // Topic mastery changer
   const handleTopicMasteryChange = (topicId: string, delta: number) => {
-    const updated = topics.map((t) => {
-      if (t.id === topicId) {
-        const nextVal = Math.min(100, Math.max(0, t.masteryLevel + delta));
-        return { ...t, masteryLevel: nextVal };
-      }
-      return t;
+    setTopics((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === topicId) {
+          const nextVal = Math.min(100, Math.max(0, t.masteryLevel + delta));
+          return { ...t, masteryLevel: nextVal };
+        }
+        return t;
+      });
+      saveTopics(updated);
+      return updated;
     });
-    setTopics(updated);
-    saveTopics(updated);
   };
 
   // Explanation cache updater
   const handleUpdateTopicExplanation = (topicId: string, level: string, text: string) => {
-    const updated = topics.map((t) => {
-      if (t.id === topicId) {
-        return {
-          ...t,
-          explanationCache: {
-            ...(t.explanationCache || {}),
-            [level]: text,
-          },
-        };
-      }
-      return t;
+    setTopics((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === topicId) {
+          return {
+            ...t,
+            explanationCache: {
+              ...(t.explanationCache || {}),
+              [level]: text,
+            },
+          };
+        }
+        return t;
+      });
+      saveTopics(updated);
+      return updated;
     });
-    setTopics(updated);
-    saveTopics(updated);
   };
 
   // Flashcards CRUD
@@ -389,25 +397,35 @@ export default function App() {
       masteryLevel: 10,
       lastStudiedAt: Date.now(),
     };
-    const updated = [newTop, ...topics];
-    setTopics(updated);
-    saveTopics(updated);
+
+    setTopics((prev) => {
+      const updated = [newTop, ...prev.filter((t) => t.id !== newTop.id)];
+      saveTopics(updated);
+      return updated;
+    });
+
     if (autoSelect) {
-      handleSelectTopic(newTop.id);
+      setSelectedTopicId(newTop.id);
+      setStudioInitialTab('explain');
+      setActiveTab('studio');
     }
   };
 
   const handleDeleteTopic = (topicId: string) => {
-    const updated = topics.filter((t) => t.id !== topicId);
-    const updatedCards = flashcards.filter((c) => c.topicId !== topicId);
-    setTopics(updated);
-    setFlashcards(updatedCards);
-    saveTopics(updated);
-    saveFlashcards(updatedCards);
+    setTopics((prev) => {
+      const updated = prev.filter((t) => t.id !== topicId);
+      saveTopics(updated);
+      if (selectedTopicId === topicId) {
+        setSelectedTopicId(updated[0]?.id || '');
+      }
+      return updated;
+    });
 
-    if (selectedTopicId === topicId && updated.length > 0) {
-      setSelectedTopicId(updated[0].id);
-    }
+    setFlashcards((prev) => {
+      const updatedCards = prev.filter((c) => c.topicId !== topicId);
+      saveFlashcards(updatedCards);
+      return updatedCards;
+    });
   };
 
   // Backup & Restore

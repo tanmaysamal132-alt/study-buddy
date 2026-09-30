@@ -159,7 +159,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span>AI-Powered Active Recall Studio</span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight mb-2">
-            Welcome back to Study Buddy
+            {totalTopics > 0 ? 'Welcome back to Study Buddy' : 'Welcome to Study Buddy'}
           </h1>
           <p className="text-indigo-100 text-sm sm:text-base mb-6 leading-relaxed">
             Turn complex topics into crystal-clear explanations, 3D active recall flashcards, and diagnostic AI quizzes in seconds.
@@ -478,7 +478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Left Column: Continue Studying & Recent Topics (2 cols) */}
         <div className="lg:col-span-2 space-y-6">
           {/* Continue Studying Card */}
-          {recentTopic && (
+          {recentTopic ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
@@ -543,6 +543,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </button>
               </div>
             </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-dashed border-indigo-200 dark:border-indigo-900/60 shadow-xs text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Ready to Start Learning?
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                Create your first subject and topic to get personalized AI notes, active recall flashcards, and diagnostic quizzes.
+              </p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={onNavigateToSubjects}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center gap-2 shadow-xs transition-transform active:scale-95"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>Add First Subject / Topic</span>
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Active Topics List */}
@@ -554,17 +576,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {topics.length}
                 </span>
               </h3>
-              <button
-                onClick={onNavigateToSubjects}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-              >
-                <span>View all</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              {topics.length > 0 && (
+                <button
+                  onClick={onNavigateToSubjects}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                >
+                  <span>View all</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            <div className="space-y-3">
-              {topics.slice(0, 4).map((topic) => {
+            {topics.length === 0 ? (
+              <div className="text-center py-6 text-slate-400 text-xs">
+                <p>No study topics added yet.</p>
+                <button
+                  onClick={onNavigateToSubjects}
+                  className="mt-2 text-indigo-600 dark:text-indigo-400 font-semibold hover:underline inline-flex items-center gap-1"
+                >
+                  <span>Create your first topic</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {topics.slice(0, 4).map((topic) => {
                 const sub = subjects.find((s) => s.id === topic.subjectId);
                 return (
                   <div
@@ -604,8 +640,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 );
               })}
             </div>
-          </div>
+          )}
         </div>
+      </div>
 
         {/* Right Column: Focus & Tips (1 col) */}
         <div className="space-y-6">

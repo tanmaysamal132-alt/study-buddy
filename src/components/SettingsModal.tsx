@@ -301,14 +301,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm('Reset all subjects, topics, and flashcards to default sample data?')) {
+                  if (confirm('Are you sure you want to clear all subjects, topics, and study progress? This starts your workspace fresh.')) {
                     onResetData();
                   }
                 }}
                 className="p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1.5 transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Defaults</span>
+                <span>Clear All Data</span>
               </button>
             </div>
           </div>

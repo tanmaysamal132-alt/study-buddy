@@ -31,7 +31,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({ topics }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   // Study Plan Generator State
-  const [goal, setGoal] = useState('Ace my upcoming exams with active recall');
+  const [goal, setGoal] = useState('');
   const [availableHours, setAvailableHours] = useState('6');
   const [generatedPlan, setGeneratedPlan] = useState<string | null>(null);
   const [isPlanLoading, setIsPlanLoading] = useState(false);
@@ -234,7 +234,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({ topics }) => {
                 type="text"
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
-                placeholder="e.g. Master Data Structures and Cellular Respiration for Midterms"
+                placeholder="e.g. Final Exams, Certification, or Course Goals"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
