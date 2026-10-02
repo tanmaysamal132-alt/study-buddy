@@ -227,3 +227,43 @@ export function clearAllUserData(): void {
 }
 
 export const resetToSampleData = clearAllUserData;
+
+export interface UserCloudSyncPayload {
+  email: string;
+  subjects: Subject[];
+  topics: Topic[];
+  flashcards: Flashcard[];
+  quizAttempts: QuizAttempt[];
+  studySessions: StudySession[];
+  settings?: UserSettings;
+}
+
+export async function fetchUserCloudData(email: string): Promise<UserCloudSyncPayload | null> {
+  if (!email || !email.trim()) return null;
+  try {
+    const res = await fetch(`/api/user-data?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.exists && json.data) {
+      return json.data;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Failed to fetch user cloud data:', err);
+    return null;
+  }
+}
+
+let syncTimeout: any = null;
+export function debouncedCloudSync(payload: UserCloudSyncPayload, delayMs: number = 600) {
+  if (!payload.email || !payload.email.trim()) return;
+  if (syncTimeout) clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(() => {
+    fetch('/api/user-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch((err) => console.warn('Cloud sync error:', err));
+  }, delayMs);
+}
+

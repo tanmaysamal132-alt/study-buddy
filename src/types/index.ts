@@ -7,6 +7,13 @@ export interface Subject {
   createdAt: number;
 }
 
+export interface TopicQuestionAnswer {
+  id: string;
+  question: string;
+  answer: string;
+  timestamp: number;
+}
+
 export interface Topic {
   id: string;
   subjectId: string;
@@ -15,6 +22,8 @@ export interface Topic {
   masteryLevel: number; // 0 to 100
   lastStudiedAt: number;
   explanationCache?: Record<string, string>; // level -> explanation
+  savedQuestions?: TopicQuestionAnswer[];
+  chatHistory?: ChatMessage[];
 }
 
 export interface Flashcard {

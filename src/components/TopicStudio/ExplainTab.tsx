@@ -15,6 +15,7 @@ import {
   ArrowRight,
   BookmarkPlus,
   Compass,
+  Trash2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Topic, Subject } from '../../types';
@@ -52,6 +53,8 @@ interface ExplainTabProps {
   subject?: Subject;
   allTopics?: Topic[];
   onUpdateTopicExplanation: (level: string, text: string) => void;
+  onSaveQuestionAnswer?: (topicId: string, qa: { id: string; question: string; answer: string; timestamp: number }) => void;
+  onDeleteQuestionAnswer?: (topicId: string, questionId: string) => void;
   onCreateTopic?: (topData: Omit<Topic, 'id' | 'lastStudiedAt' | 'masteryLevel'>, autoSelect?: boolean) => void;
   onSelectTopic?: (topicId: string) => void;
   onSwitchToChat?: () => void;
@@ -62,6 +65,8 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
   subject,
   allTopics = [],
   onUpdateTopicExplanation,
+  onSaveQuestionAnswer,
+  onDeleteQuestionAnswer,
   onCreateTopic,
   onSelectTopic,
   onSwitchToChat,
@@ -72,7 +77,7 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // Q&A and New Topic Explorer State
+  // Q&A and New Topic Explorer State (synced from topic.savedQuestions)
   const [qaInput, setQaInput] = useState('');
   const [isQaLoading, setIsQaLoading] = useState(false);
   const [qaItems, setQaItems] = useState<
@@ -82,11 +87,41 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
       answer: string;
       suggestedTopic: SuggestedTopic | null;
     }>
-  >([]);
+  >(() => {
+    return (topic.savedQuestions || []).map((q) => ({
+      id: q.id,
+      question: q.question,
+      answer: q.answer,
+      suggestedTopic: null,
+    }));
+  });
   const [addedTopics, setAddedTopics] = useState<Record<string, string>>({});
+
+  // Sync qaItems when topic changes
+  React.useEffect(() => {
+    if (topic.savedQuestions && topic.savedQuestions.length > 0) {
+      setQaItems(
+        topic.savedQuestions.map((q) => ({
+          id: q.id,
+          question: q.question,
+          answer: q.answer,
+          suggestedTopic: null,
+        }))
+      );
+    } else {
+      setQaItems([]);
+    }
+  }, [topic.id, topic.savedQuestions]);
 
   // Cached or generated text
   const currentExplanation = topic.explanationCache?.[level] || '';
+
+  // AUTOMATIC NOTE GENERATION (Don't ask, generate immediately!)
+  React.useEffect(() => {
+    if (!currentExplanation && !isLoading && !error) {
+      handleGenerate();
+    }
+  }, [topic.id, level, currentExplanation]);
 
   const handleGenerate = async () => {
     setIsLoading(true);
@@ -183,15 +218,24 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
 
       const { cleanAnswer, suggestedTopic } = parseAnswerForTopic(response);
 
+      const newQaItem = {
+        id: `qa_${Date.now()}`,
+        question: questionText,
+        answer: cleanAnswer,
+        timestamp: Date.now(),
+      };
+
       setQaItems((prev) => [
         {
-          id: `qa_${Date.now()}`,
-          question: questionText,
-          answer: cleanAnswer,
+          ...newQaItem,
           suggestedTopic,
         },
         ...prev,
       ]);
+
+      if (onSaveQuestionAnswer) {
+        onSaveQuestionAnswer(topic.id, newQaItem);
+      }
     } catch (err: any) {
       setQaItems((prev) => [
         {
@@ -312,12 +356,65 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
           <div className="h-4 bg-slate-100 dark:bg-slate-800/60 rounded w-3/4" />
         </div>
       ) : currentExplanation ? (
-        <NoteRenderer
-          content={currentExplanation}
-          topicTitle={topic.title}
-          subjectName={subject?.name}
-          depthLevel={level}
-        />
+        <div className="space-y-6">
+          <NoteRenderer
+            content={currentExplanation}
+            topicTitle={topic.title}
+            subjectName={subject?.name}
+            depthLevel={level}
+          />
+
+          {/* Need More Study Materials / Actions Bar */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-indigo-50/80 via-white to-violet-50/80 dark:from-indigo-950/40 dark:via-slate-900 dark:to-violet-950/40 border border-indigo-200/80 dark:border-indigo-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-xs">
+                <Sparkles className="w-4 h-4 text-amber-300" />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                  Need more notes or deeper explanations?
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Switch to academic deep dive, regenerate notes, or ask specific questions below.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {level !== 'deep' && (
+                <button
+                  type="button"
+                  onClick={() => setLevel('deep')}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Generate Deep Dive Notes</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={isLoading}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Regenerate Notes</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('topic-qa-input');
+                  el?.focus();
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>Ask Question Below</span>
+              </button>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="text-center py-16 px-4 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800">
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3">
@@ -398,11 +495,12 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
           className="flex items-center gap-2"
         >
           <input
+            id="topic-qa-input"
             type="text"
             value={qaInput}
             onChange={(e) => setQaInput(e.target.value)}
             disabled={isQaLoading}
-            placeholder={`Ask any question about ${topic.title} or ask to learn a new topic...`}
+            placeholder={`Ask any question about ${topic.title} (saved automatically across devices)...`}
             className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <button
@@ -415,7 +513,7 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
             ) : (
               <Send className="w-4 h-4" />
             )}
-            <span className="hidden sm:inline">Ask</span>
+            <span className="hidden sm:inline">Ask & Save</span>
           </button>
         </form>
 
@@ -423,13 +521,22 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
         {isQaLoading && (
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5 text-xs text-slate-500 animate-pulse">
             <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
-            <span>Consulting AI Tutor and checking for related study topics...</span>
+            <span>Consulting AI Tutor and saving answer to this topic...</span>
           </div>
         )}
 
         {/* Q&A Responses List */}
         {qaItems.length > 0 && (
           <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+              <span className="font-semibold text-slate-600 dark:text-slate-300">
+                {qaItems.length} Question{qaItems.length !== 1 ? 's' : ''} Saved in this Topic
+              </span>
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <span>✓ Synced across devices</span>
+              </span>
+            </div>
+
             {qaItems.map((item) => {
               const hasSuggested = item.suggestedTopic;
               const isAdded = hasSuggested && !!addedTopics[hasSuggested.title];
@@ -437,9 +544,9 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
               return (
                 <div
                   key={item.id}
-                  className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3 animate-fade-in"
+                  className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3 animate-fade-in group"
                 >
-                  {/* User Question */}
+                  {/* User Question Header */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
                       <span className="px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[10px] uppercase font-bold tracking-wider">
@@ -448,17 +555,57 @@ export const ExplainTab: React.FC<ExplainTabProps> = ({
                       <span>{item.question}</span>
                     </div>
 
-                    {onCreateTopic && (
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => handleAddTopicToMain(item.question)}
-                        title="Add this question as a new main topic"
-                        className="text-[11px] font-semibold text-slate-500 hover:text-indigo-600 flex items-center gap-1 shrink-0 transition-colors"
+                        onClick={() => {
+                          SpeechService.speak(item.answer);
+                        }}
+                        title="Read answer aloud"
+                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                       >
-                        <BookmarkPlus className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Add as Topic</span>
+                        <Volume2 className="w-3.5 h-3.5" />
                       </button>
-                    )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`Q: ${item.question}\n\nA: ${item.answer}`);
+                        }}
+                        title="Copy question and answer"
+                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+
+                      {onCreateTopic && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddTopicToMain(item.question)}
+                          title="Add this question as a new main topic"
+                          className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 text-[11px] font-semibold"
+                        >
+                          <BookmarkPlus className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Add as Topic</span>
+                        </button>
+                      )}
+
+                      {onDeleteQuestionAnswer && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Delete this saved question and answer?')) {
+                              onDeleteQuestionAnswer(topic.id, item.id);
+                              setQaItems((prev) => prev.filter((q) => q.id !== item.id));
+                            }
+                          }}
+                          title="Delete saved question"
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* AI Answer */}

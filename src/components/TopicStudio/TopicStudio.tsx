@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BookOpen,
   Layers,
@@ -10,6 +10,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { Topic, Subject, Flashcard, QuizAttempt } from '../../types';
+import { AIService } from '../../services/ai';
 import { ExplainTab } from './ExplainTab';
 import { FlashcardsTab } from './FlashcardsTab';
 import { QuizTab } from './QuizTab';
@@ -26,6 +27,8 @@ interface TopicStudioProps {
   onCreateTopic?: (topData: Omit<Topic, 'id' | 'lastStudiedAt' | 'masteryLevel'>, autoSelect?: boolean) => void;
   onBackToDashboard: () => void;
   onUpdateTopicExplanation: (level: string, text: string) => void;
+  onSaveTopicQuestionAnswer?: (topicId: string, qa: { id: string; question: string; answer: string; timestamp: number }) => void;
+  onDeleteTopicQuestionAnswer?: (topicId: string, questionId: string) => void;
   onAddFlashcards: (cards: Flashcard[]) => void;
   onUpdateFlashcard: (card: Flashcard) => void;
   onDeleteFlashcard: (cardId: string) => void;
@@ -43,6 +46,8 @@ export const TopicStudio: React.FC<TopicStudioProps> = ({
   onCreateTopic,
   onBackToDashboard,
   onUpdateTopicExplanation,
+  onSaveTopicQuestionAnswer,
+  onDeleteTopicQuestionAnswer,
   onAddFlashcards,
   onUpdateFlashcard,
   onDeleteFlashcard,
@@ -52,8 +57,40 @@ export const TopicStudio: React.FC<TopicStudioProps> = ({
 }) => {
   const [currentTab, setCurrentTab] = useState<StudioTab>(initialTab);
   const [isTopicPickerOpen, setIsTopicPickerOpen] = useState(false);
+  const generatingCardsTopicIdRef = useRef<string | null>(null);
 
   const topicCardsCount = flashcards.filter((c) => c.topicId === topic.id).length;
+
+  // AUTOMATIC FLASHCARD GENERATION IN BACKGROUND (Don't ask, prepare cards immediately!)
+  useEffect(() => {
+    const existingCards = flashcards.filter((c) => c.topicId === topic.id);
+    if (existingCards.length === 0 && generatingCardsTopicIdRef.current !== topic.id) {
+      generatingCardsTopicIdRef.current = topic.id;
+      AIService.generateFlashcards({
+        topic: topic.title,
+        subject: subject?.name,
+        count: 6,
+      })
+        .then((generated) => {
+          if (generated && generated.length > 0) {
+            const newCards: Flashcard[] = generated.map((c, idx) => ({
+              id: `fc_${Date.now()}_${idx}`,
+              topicId: topic.id,
+              question: c.question,
+              answer: c.answer,
+              hint: c.hint,
+              difficulty: (c.difficulty as Flashcard['difficulty']) || 'medium',
+              status: 'new',
+              reviewCount: 0,
+            }));
+            onAddFlashcards(newCards);
+          }
+        })
+        .catch((err) => {
+          console.warn('Auto flashcards generation fallback:', err);
+        });
+    }
+  }, [topic.id, flashcards.length]);
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
@@ -207,6 +244,8 @@ export const TopicStudio: React.FC<TopicStudioProps> = ({
           subject={subject}
           allTopics={allTopics}
           onUpdateTopicExplanation={onUpdateTopicExplanation}
+          onSaveQuestionAnswer={onSaveTopicQuestionAnswer}
+          onDeleteQuestionAnswer={onDeleteTopicQuestionAnswer}
           onCreateTopic={onCreateTopic}
           onSelectTopic={onSelectTopic}
           onSwitchToChat={() => setCurrentTab('chat')}
@@ -239,6 +278,7 @@ export const TopicStudio: React.FC<TopicStudioProps> = ({
           topic={topic}
           subject={subject}
           allTopics={allTopics}
+          onSaveQuestionAnswer={onSaveTopicQuestionAnswer}
           onCreateTopic={onCreateTopic}
           onSelectTopic={onSelectTopic}
         />

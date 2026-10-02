@@ -109,6 +109,13 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({
     setCurrentIndex(Math.floor(Math.random() * topicCards.length));
   };
 
+  // AUTOMATIC FLASHCARD GENERATION (Don't ask, generate immediately!)
+  useEffect(() => {
+    if (topicCards.length === 0 && !isAiLoading && !aiError) {
+      handleGenerateAiCards();
+    }
+  }, [topic.id, topicCards.length]);
+
   const handleMarkStatus = (status: 'learning' | 'mastered') => {
     if (!currentCard) return;
 
@@ -215,31 +222,45 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({
           </button>
 
           <button
-            onClick={() => setIsAiModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+            onClick={handleGenerateAiCards}
+            disabled={isAiLoading}
+            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span>AI Generate Cards</span>
+            <span>{isAiLoading ? 'Generating...' : topicCards.length > 0 ? 'Generate 6 More Cards' : 'Generate Cards'}</span>
           </button>
         </div>
       </div>
 
       {topicCards.length === 0 ? (
-        <div className="text-center py-16 px-4 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800">
-          <Layers className="w-12 h-12 text-slate-400 mx-auto mb-3 opacity-60" />
-          <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1">
-            No flashcards in this deck
-          </h4>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
-            Generate active-recall flashcards using Gemini AI or create your own custom study cards.
-          </p>
-          <button
-            onClick={() => setIsAiModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center gap-2 shadow-xs"
-          >
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Generate Flashcards with AI</span>
-          </button>
+        <div className="text-center py-16 px-4 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 space-y-4">
+          <div className="h-12 w-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+            <Sparkles className="w-6 h-6 animate-pulse text-amber-400" />
+          </div>
+          <div>
+            <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1">
+              {isAiLoading ? 'Auto-Generating Flashcards...' : 'Preparing Your Flashcards'}
+            </h4>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+              {isAiLoading
+                ? `Gemini AI is crafting active-recall questions and diagnostic hints for "${topic.title}".`
+                : 'Flashcards will appear automatically in a moment.'}
+            </p>
+          </div>
+          {isAiLoading ? (
+            <div className="flex items-center justify-center gap-2 text-xs text-indigo-600 dark:text-indigo-400 font-semibold animate-pulse">
+              <RotateCw className="w-4 h-4 animate-spin" />
+              <span>Building high-yield review deck...</span>
+            </div>
+          ) : (
+            <button
+              onClick={handleGenerateAiCards}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center gap-2 shadow-xs"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Generate Flashcards Now</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="max-w-2xl mx-auto space-y-6">
@@ -388,6 +409,28 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({
             >
               <ChevronRight className="w-5 h-5" />
             </button>
+          </div>
+
+          {/* Need More Flashcards Bar */}
+          <div className="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-900/50 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                Need more flashcards on {topic.title}?
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleGenerateAiCards}
+                disabled={isAiLoading}
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all disabled:opacity-50 active:scale-95"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>{isAiLoading ? 'Adding Cards...' : '+ Generate 6 More Flashcards'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

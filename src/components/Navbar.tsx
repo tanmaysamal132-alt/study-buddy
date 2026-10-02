@@ -12,6 +12,8 @@ import {
   Sun,
   Moon,
   Zap,
+  Cloud,
+  CheckCircle2,
 } from 'lucide-react';
 import { UserSettings } from '../types';
 import { formatTime } from './PomodoroTimer';
@@ -26,6 +28,7 @@ interface NavbarProps {
   settings: UserSettings;
   onOpenSettings: () => void;
   onOpenAuth: () => void;
+  onOpenEmailModal?: () => void;
   onToggleTheme: () => void;
   userEmail?: string | null;
   pomodoroState?: {
@@ -43,6 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   settings,
   onOpenSettings,
   onOpenAuth,
+  onOpenEmailModal,
   onToggleTheme,
   userEmail,
   pomodoroState,
@@ -172,16 +176,34 @@ export const Navbar: React.FC<NavbarProps> = ({
               {settings.darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            {/* Auth / Cloud Sync */}
+            {/* Cross-Device Email Cloud Sync */}
             <button
-              onClick={onOpenAuth}
-              title={userEmail ? `Signed in as ${userEmail}` : 'Connect Supabase Cloud / Guest'}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={onOpenEmailModal || onOpenAuth}
+              title={
+                userEmail
+                  ? `Synced to ${userEmail} across all devices. Click to switch email or check status.`
+                  : 'Enter your email to sync study progression across devices'
+              }
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                userEmail
+                  ? 'border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 shadow-2xs'
+                  : 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors animate-pulse'
+              }`}
             >
-              <User className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden md:inline max-w-[100px] truncate">
-                {userEmail ? userEmail.split('@')[0] : 'Guest / Sync'}
-              </span>
+              {userEmail ? (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden md:inline max-w-[110px] truncate">
+                    {userEmail.split('@')[0]}
+                  </span>
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500 hidden sm:inline" />
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span className="hidden md:inline">Sync Email</span>
+                </>
+              )}
             </button>
 
             {/* Settings */}

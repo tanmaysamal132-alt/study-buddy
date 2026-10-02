@@ -32,6 +32,18 @@ export interface StudyPlanParams {
   topics: string[];
 }
 
+export interface AnalyzedSubjectResult {
+  name: string;
+  field: string;
+  description: string;
+  color: 'indigo' | 'emerald' | 'amber' | 'rose' | 'violet' | 'cyan' | 'blue';
+  icon: string;
+  topics: Array<{
+    title: string;
+    description: string;
+  }>;
+}
+
 export class AIService {
   private static getCustomKey(): string | undefined {
     const settings = loadSettings();
@@ -144,5 +156,25 @@ export class AIService {
     }
 
     return data.plan;
+  }
+
+  static async analyzeSubject(subjectInput: string): Promise<AnalyzedSubjectResult> {
+    incrementAiQuota();
+
+    const response = await fetch('/api/ai/analyze-subject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subjectInput,
+        customApiKey: this.getCustomKey(),
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to analyze subject');
+    }
+
+    return data;
   }
 }

@@ -23,6 +23,7 @@ interface ChatTabProps {
   allTopics?: Topic[];
   onCreateTopic?: (topData: Omit<Topic, 'id' | 'lastStudiedAt' | 'masteryLevel'>, autoSelect?: boolean) => void;
   onSelectTopic?: (topicId: string) => void;
+  onSaveQuestionAnswer?: (topicId: string, qa: { id: string; question: string; answer: string; timestamp: number }) => void;
 }
 
 interface SuggestedTopic {
@@ -56,15 +57,38 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   allTopics = [],
   onCreateTopic,
   onSelectTopic,
+  onSaveQuestionAnswer,
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'model',
-      content: `Hello! I'm your Socratic AI Tutor for **${topic.title}**. What would you like to explore or clarify today? You can ask me to break down difficult steps, quiz you interactively, or ask about any new topic to add to your study list.`,
-      timestamp: Date.now(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const initialList: ChatMessage[] = [
+      {
+        id: 'welcome',
+        role: 'model',
+        content: `Hello! I'm your Socratic AI Tutor for **${topic.title}**. What would you like to explore or clarify today? You can ask me to break down difficult steps, quiz you interactively, or ask questions that will be saved to your account!`,
+        timestamp: Date.now(),
+      },
+    ];
+
+    if (topic.savedQuestions && topic.savedQuestions.length > 0) {
+      // Re-hydrate previously asked questions and answers
+      topic.savedQuestions.slice().reverse().forEach((sq) => {
+        initialList.push({
+          id: `saved_q_${sq.id}`,
+          role: 'user',
+          content: sq.question,
+          timestamp: sq.timestamp,
+        });
+        initialList.push({
+          id: `saved_a_${sq.id}`,
+          role: 'model',
+          content: sq.answer,
+          timestamp: sq.timestamp + 500,
+        });
+      });
+    }
+
+    return initialList;
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -148,6 +172,15 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       };
 
       setMessages((prev) => [...prev, modelMessage]);
+
+      if (onSaveQuestionAnswer) {
+        onSaveQuestionAnswer(topic.id, {
+          id: `qa_${Date.now()}`,
+          question: text.trim(),
+          answer: reply,
+          timestamp: Date.now(),
+        });
+      }
     } catch (err: any) {
       const errorMessage: ChatMessage = {
         id: `err_${Date.now()}`,

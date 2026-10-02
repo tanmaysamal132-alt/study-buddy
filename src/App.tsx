@@ -12,12 +12,16 @@ import {
   loadQuizAttempts,
   saveQuizAttempt,
   loadStudySessions,
+  saveStudySessions,
   recordStudySession,
   loadSettings,
   saveSettings,
   calculateStudyStreak,
   resetToSampleData,
+  fetchUserCloudData,
+  debouncedCloudSync,
 } from './services/storage';
+import { AIService } from './services/ai';
 import { getSupabaseClient } from './services/supabase';
 import { Navbar, ActiveTab } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
@@ -27,6 +31,7 @@ import { AIAssistant } from './components/AIAssistant';
 import { PomodoroTimer, TimerMode, MODE_CONFIG, formatTime } from './components/PomodoroTimer';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
+import { EmailStartModal } from './components/EmailStartModal';
 
 export default function App() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -58,6 +63,49 @@ export default function App() {
       return null;
     }
   });
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('studybuddy_user_email_v1');
+    } catch {
+      return true;
+    }
+  });
+  const isCloudDataLoadedRef = useRef<boolean>(!userEmail);
+
+  const triggerSync = (
+    subs = subjects,
+    tops = topics,
+    cards = flashcards,
+    quizzes = quizAttempts,
+    sessions = studySessions,
+    sets = settings
+  ) => {
+    if (userEmail) {
+      debouncedCloudSync({
+        email: userEmail,
+        subjects: subs,
+        topics: tops,
+        flashcards: cards,
+        quizAttempts: quizzes,
+        studySessions: sessions,
+        settings: sets,
+      });
+    }
+  };
+
+  // Continuous background auto-sync whenever progression state updates
+  useEffect(() => {
+    if (!userEmail || !isCloudDataLoadedRef.current) return;
+    debouncedCloudSync({
+      email: userEmail,
+      subjects,
+      topics,
+      flashcards,
+      quizAttempts,
+      studySessions,
+      settings,
+    }, 500);
+  }, [subjects, topics, flashcards, quizAttempts, studySessions, settings, userEmail]);
 
   const handleUserChange = (email: string | null) => {
     setUserEmail(email);
@@ -69,6 +117,45 @@ export default function App() {
       }
     } catch (e) {
       console.warn('Failed to save user email in localStorage', e);
+    }
+  };
+
+  const handleEmailConfirm = async (email: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    handleUserChange(cleanEmail);
+
+    try {
+      const cloud = await fetchUserCloudData(cleanEmail);
+      isCloudDataLoadedRef.current = true;
+      if (cloud && cloud.subjects) {
+        setSubjects(cloud.subjects);
+        setTopics(cloud.topics || []);
+        setFlashcards(cloud.flashcards || []);
+        setQuizAttempts(cloud.quizAttempts || []);
+        setStudySessions(cloud.studySessions || []);
+        saveSubjects(cloud.subjects);
+        saveTopics(cloud.topics || []);
+        saveFlashcards(cloud.flashcards || []);
+        saveStudySessions(cloud.studySessions || []);
+
+        if (cloud.topics?.length > 0) {
+          setSelectedTopicId(cloud.topics[0].id);
+          setPomodoroTopicId(cloud.topics[0].id);
+        }
+      } else {
+        debouncedCloudSync({
+          email: cleanEmail,
+          subjects,
+          topics,
+          flashcards,
+          quizAttempts,
+          studySessions,
+          settings,
+        }, 50);
+      }
+    } catch (e) {
+      isCloudDataLoadedRef.current = true;
+      console.warn('Failed to load cloud data on login:', e);
     }
   };
 
@@ -91,6 +178,33 @@ export default function App() {
     if (loadedTops.length > 0) {
       setSelectedTopicId(loadedTops[0].id);
       setPomodoroTopicId(loadedTops[0].id);
+    }
+
+    // If an email was previously saved, fetch the latest progression from the cloud
+    if (userEmail) {
+      fetchUserCloudData(userEmail)
+        .then((cloud) => {
+          isCloudDataLoadedRef.current = true;
+          if (cloud && cloud.subjects) {
+            setSubjects(cloud.subjects);
+            setTopics(cloud.topics || []);
+            setFlashcards(cloud.flashcards || []);
+            setQuizAttempts(cloud.quizAttempts || []);
+            setStudySessions(cloud.studySessions || []);
+            saveSubjects(cloud.subjects);
+            saveTopics(cloud.topics || []);
+            saveFlashcards(cloud.flashcards || []);
+            saveStudySessions(cloud.studySessions || []);
+            if (cloud.topics?.length > 0) {
+              setSelectedTopicId(cloud.topics[0].id);
+              setPomodoroTopicId(cloud.topics[0].id);
+            }
+          }
+        })
+        .catch((e) => {
+          isCloudDataLoadedRef.current = true;
+          console.warn('Cloud load error on mount:', e);
+        });
     }
 
     // Check Supabase session & recovery events
@@ -157,42 +271,105 @@ export default function App() {
     });
   };
 
-  const handleQuickExplain = (topicTitle: string) => {
+  const handleQuickExplain = async (topicTitle: string) => {
+    const cleanQuery = topicTitle.trim();
+    if (!cleanQuery) return;
+
     // Check if topic exists
-    const existing = topics.find((t) => t.title.toLowerCase() === topicTitle.toLowerCase());
+    const existing = topics.find((t) => t.title.toLowerCase() === cleanQuery.toLowerCase());
     if (existing) {
       handleSelectTopic(existing.id, 'explain');
       return;
     }
 
-    // Otherwise create topic under first subject
-    const defaultSubject = subjects[0] || {
-      id: 'sub_general',
-      name: 'General Studies',
-      description: 'General study topics',
-      color: 'indigo',
-      icon: 'BookOpen',
-      createdAt: Date.now(),
-    };
+    try {
+      // Analyze subject query to see where it belongs & auto-generate topics!
+      const analysis = await AIService.analyzeSubject(cleanQuery);
 
-    const newTopic: Topic = {
-      id: `top_${Date.now()}`,
-      subjectId: defaultSubject.id,
-      title: topicTitle,
-      description: `Exploring key concepts and principles of ${topicTitle}.`,
-      masteryLevel: 10,
-      lastStudiedAt: Date.now(),
-    };
+      const newSub: Subject = {
+        id: `sub_${Date.now()}`,
+        name: analysis.name || cleanQuery,
+        description: analysis.description || `Study curriculum for ${cleanQuery}`,
+        color: analysis.color || 'indigo',
+        icon: analysis.icon || 'BookOpen',
+        createdAt: Date.now(),
+      };
 
-    setTopics((prev) => {
-      const updated = [newTopic, ...prev.filter((t) => t.id !== newTopic.id)];
-      saveTopics(updated);
-      return updated;
-    });
+      const updatedSubs = [...subjects, newSub];
+      setSubjects(updatedSubs);
+      saveSubjects(updatedSubs);
 
-    setSelectedTopicId(newTopic.id);
-    setStudioInitialTab('explain');
-    setActiveTab('studio');
+      const generatedTopics: Topic[] = (analysis.topics || []).map((top, idx) => ({
+        id: `top_${Date.now()}_${idx}`,
+        subjectId: newSub.id,
+        title: top.title,
+        description: top.description,
+        masteryLevel: 10,
+        lastStudiedAt: Date.now() - idx * 1000,
+        explanationCache: {},
+        savedQuestions: [],
+      }));
+
+      const finalTopics = generatedTopics.length > 0 ? generatedTopics : [
+        {
+          id: `top_${Date.now()}`,
+          subjectId: newSub.id,
+          title: cleanQuery,
+          description: `Key concepts and fundamentals of ${cleanQuery}.`,
+          masteryLevel: 10,
+          lastStudiedAt: Date.now(),
+          explanationCache: {},
+          savedQuestions: [],
+        },
+      ];
+
+      const updatedTopics = [...finalTopics, ...topics];
+      setTopics(updatedTopics);
+      saveTopics(updatedTopics);
+
+      setSelectedTopicId(finalTopics[0].id);
+      setStudioInitialTab('explain');
+      setActiveTab('studio');
+
+      triggerSync(updatedSubs, updatedTopics);
+    } catch (err) {
+      console.warn('Quick explain fallback:', err);
+      const defaultSubject = subjects[0] || {
+        id: `sub_${Date.now()}`,
+        name: 'General Studies',
+        description: 'General study topics',
+        color: 'indigo' as const,
+        icon: 'BookOpen',
+        createdAt: Date.now(),
+      };
+
+      if (!subjects.some((s) => s.id === defaultSubject.id)) {
+        setSubjects((prev) => [...prev, defaultSubject]);
+        saveSubjects([...subjects, defaultSubject]);
+      }
+
+      const newTopic: Topic = {
+        id: `top_${Date.now()}`,
+        subjectId: defaultSubject.id,
+        title: cleanQuery,
+        description: `Exploring key concepts and principles of ${cleanQuery}.`,
+        masteryLevel: 10,
+        lastStudiedAt: Date.now(),
+        explanationCache: {},
+        savedQuestions: [],
+      };
+
+      setTopics((prev) => {
+        const updated = [newTopic, ...prev.filter((t) => t.id !== newTopic.id)];
+        saveTopics(updated);
+        triggerSync(subjects, updated);
+        return updated;
+      });
+
+      setSelectedTopicId(newTopic.id);
+      setStudioInitialTab('explain');
+      setActiveTab('studio');
+    }
   };
 
   // Topic mastery changer
@@ -206,6 +383,7 @@ export default function App() {
         return t;
       });
       saveTopics(updated);
+      triggerSync(subjects, updated);
       return updated;
     });
   };
@@ -226,6 +404,46 @@ export default function App() {
         return t;
       });
       saveTopics(updated);
+      triggerSync(subjects, updated);
+      return updated;
+    });
+  };
+
+  // Save question & answer directly into the topic so it persists across devices!
+  const handleSaveTopicQuestionAnswer = (
+    topicId: string,
+    qa: { id: string; question: string; answer: string; timestamp: number }
+  ) => {
+    setTopics((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === topicId) {
+          const prevQuestions = t.savedQuestions || [];
+          return {
+            ...t,
+            savedQuestions: [qa, ...prevQuestions.filter((q) => q.id !== qa.id)],
+          };
+        }
+        return t;
+      });
+      saveTopics(updated);
+      triggerSync(subjects, updated);
+      return updated;
+    });
+  };
+
+  const handleDeleteTopicQuestionAnswer = (topicId: string, questionId: string) => {
+    setTopics((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === topicId) {
+          return {
+            ...t,
+            savedQuestions: (t.savedQuestions || []).filter((q) => q.id !== questionId),
+          };
+        }
+        return t;
+      });
+      saveTopics(updated);
+      triggerSync(subjects, updated);
       return updated;
     });
   };
@@ -235,30 +453,41 @@ export default function App() {
     const updated = [...flashcards, ...newCards];
     setFlashcards(updated);
     saveFlashcards(updated);
+    triggerSync(subjects, topics, updated);
   };
 
   const handleUpdateFlashcard = (card: Flashcard) => {
     const updated = flashcards.map((c) => (c.id === card.id ? card : c));
     setFlashcards(updated);
     saveFlashcards(updated);
+    triggerSync(subjects, topics, updated);
   };
 
   const handleDeleteFlashcard = (cardId: string) => {
     const updated = flashcards.filter((c) => c.id !== cardId);
     setFlashcards(updated);
     saveFlashcards(updated);
+    triggerSync(subjects, topics, updated);
   };
 
   // Quiz Attempt Saver
   const handleSaveQuizAttempt = (attempt: QuizAttempt) => {
     saveQuizAttempt(attempt);
-    setQuizAttempts((prev) => [attempt, ...prev]);
+    setQuizAttempts((prev) => {
+      const updated = [attempt, ...prev];
+      triggerSync(subjects, topics, flashcards, updated);
+      return updated;
+    });
   };
 
   // Session complete (Pomodoro)
   const handleSessionComplete = (session: StudySession) => {
     recordStudySession(session);
-    setStudySessions((prev) => [session, ...prev]);
+    setStudySessions((prev) => {
+      const updated = [session, ...prev];
+      triggerSync(subjects, topics, flashcards, quizAttempts, updated);
+      return updated;
+    });
   };
 
   // Continuous background Pomodoro timer that NEVER resets when navigating across topics or tabs
@@ -366,24 +595,65 @@ export default function App() {
   };
 
   // Subject CRUD
-  const handleCreateSubject = (subData: Omit<Subject, 'id' | 'createdAt'>) => {
+  const handleCreateSubject = (
+    subData: Omit<Subject, 'id' | 'createdAt'>,
+    initialTopics?: Array<{ title: string; description: string }>
+  ) => {
     const newSub: Subject = {
       ...subData,
       id: `sub_${Date.now()}`,
       createdAt: Date.now(),
     };
-    const updated = [...subjects, newSub];
-    setSubjects(updated);
-    saveSubjects(updated);
+    const updatedSubs = [...subjects, newSub];
+    setSubjects(updatedSubs);
+    saveSubjects(updatedSubs);
+
+    if (initialTopics && initialTopics.length > 0) {
+      const newTopicsList: Topic[] = initialTopics.map((top, idx) => ({
+        id: `top_${Date.now()}_${idx}`,
+        subjectId: newSub.id,
+        title: top.title,
+        description: top.description,
+        masteryLevel: 10,
+        lastStudiedAt: Date.now() - idx * 1000,
+        explanationCache: {},
+        savedQuestions: [],
+      }));
+
+      const updatedTopics = [...newTopicsList, ...topics];
+      setTopics(updatedTopics);
+      saveTopics(updatedTopics);
+
+      setSelectedTopicId(newTopicsList[0].id);
+      setStudioInitialTab('explain');
+      setActiveTab('studio');
+
+      triggerSync(updatedSubs, updatedTopics);
+    } else {
+      triggerSync(updatedSubs);
+    }
   };
 
   const handleDeleteSubject = (subjectId: string) => {
     const updatedSubs = subjects.filter((s) => s.id !== subjectId);
+    const topicsToDelete = topics.filter((t) => t.subjectId === subjectId);
+    const topicIdsToDelete = new Set(topicsToDelete.map((t) => t.id));
     const updatedTopics = topics.filter((t) => t.subjectId !== subjectId);
+    const updatedCards = flashcards.filter((c) => !topicIdsToDelete.has(c.topicId));
+
     setSubjects(updatedSubs);
     setTopics(updatedTopics);
+    setFlashcards(updatedCards);
+
     saveSubjects(updatedSubs);
     saveTopics(updatedTopics);
+    saveFlashcards(updatedCards);
+
+    if (selectedTopicId && topicIdsToDelete.has(selectedTopicId)) {
+      setSelectedTopicId(updatedTopics[0]?.id || '');
+    }
+
+    triggerSync(updatedSubs, updatedTopics, updatedCards);
   };
 
   // Topic CRUD
@@ -501,6 +771,7 @@ export default function App() {
           setAuthInitialMode('signin');
           setIsAuthOpen(true);
         }}
+        onOpenEmailModal={() => setIsEmailModalOpen(true)}
         onToggleTheme={handleToggleTheme}
         userEmail={userEmail}
         pomodoroState={{
@@ -552,6 +823,8 @@ export default function App() {
               onCreateTopic={handleCreateTopic}
               onBackToDashboard={() => setActiveTab('dashboard')}
               onUpdateTopicExplanation={(lvl, txt) => handleUpdateTopicExplanation(currentTopic.id, lvl, txt)}
+              onSaveTopicQuestionAnswer={handleSaveTopicQuestionAnswer}
+              onDeleteTopicQuestionAnswer={handleDeleteTopicQuestionAnswer}
               onAddFlashcards={handleAddFlashcards}
               onUpdateFlashcard={handleUpdateFlashcard}
               onDeleteFlashcard={handleDeleteFlashcard}
@@ -655,6 +928,14 @@ export default function App() {
         userEmail={userEmail}
         onUserChange={handleUserChange}
         initialMode={authInitialMode}
+      />
+
+      {/* Email Start Modal for cross-device progression sync */}
+      <EmailStartModal
+        isOpen={isEmailModalOpen}
+        onConfirmEmail={handleEmailConfirm}
+        onClose={() => setIsEmailModalOpen(false)}
+        currentEmail={userEmail}
       />
     </div>
   );
